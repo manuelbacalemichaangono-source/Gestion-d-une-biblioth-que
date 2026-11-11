@@ -35,6 +35,13 @@ function LibraryWorkspace() {
     setSelectedOuvrage(null);
   }, [currentUser?.id, currentUser?.role]);
 
+  // Si aucun utilisateur n'est connecté, afficher immédiatement l'écran d'authentification Google
+  useEffect(() => {
+    if (!currentUser) {
+      ouvrirAuthModal('login');
+    }
+  }, [currentUser, ouvrirAuthModal]);
+
   const unreadNotificationsCount = useMemo(() => {
     if (!currentUser || currentUser.role !== 'etudiant') return 0;
     return getNotificationsEtudiant(currentUser.id).filter((n) => !n.lu).length;
@@ -45,6 +52,12 @@ function LibraryWorkspace() {
     setSelectedOuvrage(null);
     setStudentTab('home');
     setManagerTab('tableau');
+  };
+
+  // Déconnexion avec retour à l'écran d'authentification Google
+  const handleDeconnexion = () => {
+    logout();
+    ouvrirAuthModal('login');
   };
 
   // Détection de l'état pour la flèche de retour dans le header du body (jamais dans le menubar)
@@ -98,7 +111,7 @@ function LibraryWorkspace() {
       <ToastNotification />
       <UnifiedAuth />
 
-      {/* Barre supérieure minimaliste (Menubar avec Se connecter et S'inscrire) */}
+      {/* Barre supérieure (Menubar) */}
       <header className="h-14 bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 shadow-2xs">
         <div className="max-w-lg mx-auto h-full px-4 flex items-center justify-between">
           {/* Logo cliquable pour revenir à la page initiale depuis n'importe quelle interface */}
@@ -143,38 +156,40 @@ function LibraryWorkspace() {
             >
               S’inscrire
             </button>
-
-            {currentUser && (
-              <button
-                type="button"
-                onClick={logout}
-                className="min-h-[36px] w-9 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer ml-0.5"
-                aria-label="Déconnexion"
-                title="Déconnexion"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            )}
           </div>
         </div>
       </header>
 
       {/* Contenu principal de la section active */}
       <main className="flex-1 w-full max-w-lg mx-auto px-4 pt-3 pb-24">
-        {/* Flèche de retour à gauche dans le header du body (jamais dans le menubar) */}
-        {canGoBack && (
-          <div className="mb-2">
+        {/* Header du body : Flèche de retour à gauche & Se déconnecter à droite */}
+        <div className="mb-3 flex items-center justify-between min-h-[40px]">
+          <div>
+            {canGoBack && (
+              <button
+                type="button"
+                onClick={handleGoBack}
+                className="min-h-[38px] px-2.5 py-1 -ml-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                aria-label="Retourner en arrière"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Retour</span>
+              </button>
+            )}
+          </div>
+
+          {currentUser && (
             <button
               type="button"
-              onClick={handleGoBack}
-              className="min-h-[38px] px-2.5 py-1 -ml-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-              aria-label="Retourner en arrière"
+              onClick={handleDeconnexion}
+              className="min-h-[36px] px-3 py-1 rounded-xl text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 inline-flex items-center gap-1.5 transition-colors cursor-pointer ml-auto"
+              title="Se déconnecter et revenir à l'authentification Google"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Retour</span>
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Se déconnecter</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {isManager ? (
           <ManagerDashboard

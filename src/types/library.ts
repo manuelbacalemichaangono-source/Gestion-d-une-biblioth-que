@@ -7,12 +7,14 @@ export interface UtilisateurConnecte {
   prenom: string;
   role: RoleUtilisateur;
   matricule?: string;
+  code_massar?: string;
   filiere?: string;
 }
 
 export interface EtudiantInscrit {
   id: string;
   matricule: string;
+  code_massar?: string;
   nom: string;
   prenom: string;
   email: string;

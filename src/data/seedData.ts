@@ -29,6 +29,7 @@ export const INITIAL_ETUDIANTS: EtudiantInscrit[] = [
   {
     id: 'etu-001',
     matricule: 'ETU-2024-001',
+    code_massar: 'R130123456',
     nom: 'Martin',
     prenom: 'Thomas',
     email: 'thomas.martin@sorbonne.fr',
@@ -37,6 +38,7 @@ export const INITIAL_ETUDIANTS: EtudiantInscrit[] = [
   {
     id: 'etu-002',
     matricule: 'ETU-2024-002',
+    code_massar: 'G140987654',
     nom: 'Laurent',
     prenom: 'Camille',
     email: 'camille.laurent@sorbonne.fr',
@@ -45,6 +47,7 @@ export const INITIAL_ETUDIANTS: EtudiantInscrit[] = [
   {
     id: 'etu-003',
     matricule: 'ETU-2024-003',
+    code_massar: 'K139874512',
     nom: 'Moreau',
     prenom: 'Lucas',
     email: 'lucas.moreau@univ-paris.fr',
@@ -53,6 +56,7 @@ export const INITIAL_ETUDIANTS: EtudiantInscrit[] = [
   {
     id: 'etu-004',
     matricule: 'ETU-2024-004',
+    code_massar: 'J120456789',
     nom: 'Bernard',
     prenom: 'Sophie',
     email: 'sophie.bernard@polytechnique.edu',

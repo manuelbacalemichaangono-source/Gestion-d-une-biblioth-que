@@ -322,6 +322,7 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
           nom: etudiant.nom,
           prenom: etudiant.prenom,
           matricule: etudiant.matricule,
+          code_massar: etudiant.code_massar || etudiant.matricule,
           filiere: etudiant.filiere,
           role: 'etudiant',
         };
@@ -383,18 +384,21 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
           nom: existant.nom,
           prenom: existant.prenom,
           matricule: existant.matricule,
+          code_massar: existant.code_massar || existant.matricule,
           filiere: existant.filiere,
           role: 'etudiant',
         });
         return { success: true };
       }
 
+      const codeMassarGen = `M${Math.floor(100000000 + Math.random() * 900000000)}`;
       const nouvelEtudiant: EtudiantInscrit = {
         id: `etu-${Date.now()}`,
         email: cleanEmail,
         nom: data.nom.trim(),
         prenom: data.prenom.trim(),
         matricule: data.matricule.trim().toUpperCase(),
+        code_massar: codeMassarGen,
         filiere: data.filiere.trim(),
       };
 
@@ -405,6 +409,7 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
         nom: nouvelEtudiant.nom,
         prenom: nouvelEtudiant.prenom,
         matricule: nouvelEtudiant.matricule,
+        code_massar: nouvelEtudiant.code_massar,
         filiere: nouvelEtudiant.filiere,
         role: 'etudiant',
       });
