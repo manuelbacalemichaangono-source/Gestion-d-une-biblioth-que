@@ -21,7 +21,6 @@ function LibraryWorkspace() {
   const {
     currentUser,
     logout,
-    ouvrirAuthModal,
     getNotificationsEtudiant,
   } = useLibrary();
 
@@ -35,33 +34,30 @@ function LibraryWorkspace() {
     setSelectedOuvrage(null);
   }, [currentUser?.id, currentUser?.role]);
 
-  // Si aucun utilisateur n'est connecté, afficher immédiatement l'écran d'authentification Google
-  useEffect(() => {
-    if (!currentUser) {
-      ouvrirAuthModal('login');
-    }
-  }, [currentUser, ouvrirAuthModal]);
-
   const unreadNotificationsCount = useMemo(() => {
     if (!currentUser || currentUser.role !== 'etudiant') return 0;
     return getNotificationsEtudiant(currentUser.id).filter((n) => !n.lu).length;
   }, [currentUser, getNotificationsEtudiant]);
 
-  // Retour à la page initiale depuis n'importe où
+  // Si aucun utilisateur n'est connecté, afficher l'interface d'authentification initiale (pas une fenêtre ou un dialogue)
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+        <ToastNotification />
+        <UnifiedAuth />
+      </div>
+    );
+  }
+
+  // Retour à la page initiale
   const handleGoHome = () => {
     setSelectedOuvrage(null);
     setStudentTab('home');
     setManagerTab('tableau');
   };
 
-  // Déconnexion avec retour à l'écran d'authentification Google
-  const handleDeconnexion = () => {
-    logout();
-    ouvrirAuthModal('login');
-  };
-
   // Détection de l'état pour la flèche de retour dans le header du body (jamais dans le menubar)
-  const isManager = currentUser?.role === 'gestionnaire';
+  const isManager = currentUser.role === 'gestionnaire';
   const canGoBack = isManager
     ? managerTab !== 'tableau'
     : selectedOuvrage !== null || studentTab !== 'home';
@@ -109,12 +105,11 @@ function LibraryWorkspace() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
       <ToastNotification />
-      <UnifiedAuth />
 
       {/* Barre supérieure (Menubar) */}
       <header className="h-14 bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 shadow-2xs">
         <div className="max-w-lg mx-auto h-full px-4 flex items-center justify-between">
-          {/* Logo cliquable pour revenir à la page initiale depuis n'importe quelle interface */}
+          {/* Logo cliquable pour revenir à la page initiale */}
           <button
             type="button"
             onClick={handleGoHome}
@@ -127,36 +122,22 @@ function LibraryWorkspace() {
               <span className="text-base font-bold tracking-tight text-slate-900 block leading-none group-hover:text-indigo-600 transition-colors">
                 BiblioTech
               </span>
-              {currentUser ? (
-                <span className="text-[10px] text-slate-500 font-medium block mt-1 leading-none">
-                  {currentUser.prenom} {currentUser.nom.charAt(0)}. ({currentUser.role === 'gestionnaire' ? 'Admin' : 'Étudiant'})
-                </span>
-              ) : (
-                <span className="text-[10px] text-slate-400 font-medium block mt-1 leading-none">
-                  Accueil
-                </span>
-              )}
+              <span className="text-[10px] text-slate-500 font-medium block mt-1 leading-none">
+                {currentUser.prenom} {currentUser.nom.charAt(0)}. ({isManager ? 'Admin' : 'Étudiant'})
+              </span>
             </div>
           </button>
 
-          {/* Menubar : Se connecter & S'inscrire */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => ouvrirAuthModal('login')}
-              className="min-h-[36px] px-3 text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-            >
-              Se connecter
-            </button>
-
-            <button
-              type="button"
-              onClick={() => ouvrirAuthModal('register')}
-              className="min-h-[36px] px-3 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer shadow-2xs"
-            >
-              S’inscrire
-            </button>
-          </div>
+          {/* Déconnexion rapide dans le menubar */}
+          <button
+            type="button"
+            onClick={logout}
+            className="min-h-[36px] px-3 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1.5"
+            title="Se déconnecter"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Déconnexion</span>
+          </button>
         </div>
       </header>
 
@@ -178,17 +159,15 @@ function LibraryWorkspace() {
             )}
           </div>
 
-          {currentUser && (
-            <button
-              type="button"
-              onClick={handleDeconnexion}
-              className="min-h-[36px] px-3 py-1 rounded-xl text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 inline-flex items-center gap-1.5 transition-colors cursor-pointer ml-auto"
-              title="Se déconnecter et revenir à l'authentification Google"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Se déconnecter</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={logout}
+            className="min-h-[36px] px-3 py-1 rounded-xl text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 inline-flex items-center gap-1.5 transition-colors cursor-pointer ml-auto"
+            title="Se déconnecter"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Se déconnecter</span>
+          </button>
         </div>
 
         {isManager ? (

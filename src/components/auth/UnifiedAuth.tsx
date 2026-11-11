@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLibrary } from '../../context/LibraryContext';
 import {
-  Shield,
-  User,
-  UserPlus,
-  Check,
-  AlertCircle,
-  ChevronRight,
-  X,
-  LogIn,
   GraduationCap,
+  Shield,
+  ChevronRight,
+  AlertCircle,
+  X,
+  UserPlus,
 } from 'lucide-react';
 
 interface GoogleAccountOption {
@@ -19,45 +16,20 @@ interface GoogleAccountOption {
   avatarBg: string;
 }
 
-type AuthCategory = 'google' | 'etudiant' | 'admin' | 'register';
-
 export const UnifiedAuth: React.FC = () => {
   const {
     verifierEtConnecterEmail,
-    inscrireEtudiant,
     emailGestionnaire,
-    authModal,
-    fermerAuthModal,
     etudiants,
   } = useLibrary();
 
-  const [activeCategory, setActiveCategory] = useState<AuthCategory>('google');
-  const [studentInput, setStudentInput] = useState('');
-  const [adminPasswordInput, setAdminPasswordInput] = useState('');
-
-  // Formulaire d'inscription
-  const [regEmail, setRegEmail] = useState('');
-  const [nom, setNom] = useState('');
-  const [prenom, setPrenom] = useState('');
-  const [matricule, setMatricule] = useState('');
-  const [filiere, setFiliere] = useState('Informatique');
-  const [formError, setFormError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (authModal.isOpen) {
-      if (authModal.mode === 'register') {
-        setActiveCategory('register');
-      } else {
-        setActiveCategory('google');
-      }
-      setFormError(null);
-      if (!matricule) {
-        setMatricule(
-          `ETU-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`
-        );
-      }
-    }
-  }, [authModal.isOpen, authModal.mode]);
+  const [activeRole, setActiveRole] = useState<'etudiant' | 'admin'>('etudiant');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showGooglePicker, setShowGooglePicker] = useState(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState('');
+  const [showCustomGoogle, setShowCustomGoogle] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const googleAccounts: GoogleAccountOption[] = [
     {
@@ -83,344 +55,313 @@ export const UnifiedAuth: React.FC = () => {
     },
   ];
 
-  if (!authModal.isOpen) {
-    return null;
-  }
-
-  const handleLoginWithEmail = (email: string) => {
+  const handleSelectGoogleAccount = (email: string) => {
     const clean = email.trim().toLowerCase();
     if (!clean) return;
 
-    const result = verifierEtConnecterEmail(clean);
-    if (result.status === 'gestionnaire' || result.status === 'etudiant') {
-      fermerAuthModal();
+    setErrorMessage(null);
+    setShowGooglePicker(false);
+    setShowCustomGoogle(false);
+
+    const res = verifierEtConnecterEmail(clean);
+    if (res.status === 'non_inscrit') {
+      setErrorMessage(
+        `L’adresse ${clean} n’est pas enregistrée. Veuillez utiliser un compte étudiant valide.`
+      );
+    }
+  };
+
+  const handleEmailSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (activeRole === 'admin') {
+      // Connexion administrateur
+      const clean = emailInput.trim().toLowerCase() || emailGestionnaire.toLowerCase();
+      const res = verifierEtConnecterEmail(clean);
+      if (res.status !== 'gestionnaire') {
+        setErrorMessage(
+          'Adresse administrateur invalide. Utilisez le compte gestionnaire.'
+        );
+      }
       return;
     }
 
-    setRegEmail(clean);
-    setActiveCategory('register');
-    setFormError('Compte non trouvé. Veuillez finaliser votre inscription ci-dessous.');
-  };
+    // Connexion étudiant (par email ou par matricule)
+    const raw = emailInput.trim().toLowerCase();
+    if (!raw) {
+      setErrorMessage('Veuillez saisir votre adresse e-mail ou matricule.');
+      return;
+    }
 
-  const handleStudentLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!studentInput.trim()) return;
-
-    // Chercher par matricule ou par email
     const match = etudiants.find(
       (etu) =>
-        etu.matricule.toLowerCase() === studentInput.trim().toLowerCase() ||
-        etu.email.toLowerCase() === studentInput.trim().toLowerCase()
+        etu.email.toLowerCase() === raw ||
+        etu.matricule.toLowerCase() === raw
     );
 
-    if (match) {
-      handleLoginWithEmail(match.email);
-    } else {
-      handleLoginWithEmail(studentInput);
-    }
-  };
+    const emailToConnect = match ? match.email : raw;
+    const res = verifierEtConnecterEmail(emailToConnect);
 
-  const handleAdminDirectLogin = () => {
-    handleLoginWithEmail(emailGestionnaire);
-  };
-
-  const handleRegisterSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    const emailToUse = regEmail.trim();
-    if (!emailToUse || !emailToUse.includes('@')) {
-      setFormError('Veuillez saisir une adresse e-mail valide.');
-      return;
-    }
-
-    const res = inscrireEtudiant({
-      email: emailToUse,
-      nom,
-      prenom,
-      matricule,
-      filiere,
-    });
-
-    if (res.success) {
-      fermerAuthModal();
-    } else {
-      setFormError(res.error || 'Erreur lors de l’inscription.');
+    if (res.status === 'non_inscrit') {
+      setErrorMessage(
+        'Identifiant ou e-mail introuvable. Veuillez vérifier vos identifiants étudiants.'
+      );
     }
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
-    >
-      <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-left flex flex-col max-h-[90vh]">
-        {/* En-tête avec onglets */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/70">
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('google');
-                setFormError(null);
-              }}
-              className={`min-h-[34px] px-2.5 text-xs font-semibold rounded-xl transition-colors cursor-pointer shrink-0 ${
-                activeCategory === 'google'
-                  ? 'bg-white text-indigo-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Google
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('etudiant');
-                setFormError(null);
-              }}
-              className={`min-h-[34px] px-2.5 text-xs font-semibold rounded-xl transition-colors cursor-pointer shrink-0 ${
-                activeCategory === 'etudiant'
-                  ? 'bg-white text-indigo-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Étudiant
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('admin');
-                setFormError(null);
-              }}
-              className={`min-h-[34px] px-2.5 text-xs font-semibold rounded-xl transition-colors cursor-pointer shrink-0 ${
-                activeCategory === 'admin'
-                  ? 'bg-white text-indigo-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('register');
-                setFormError(null);
-              }}
-              className={`min-h-[34px] px-2.5 text-xs font-semibold rounded-xl transition-colors cursor-pointer shrink-0 ${
-                activeCategory === 'register'
-                  ? 'bg-white text-indigo-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              S’inscrire
-            </button>
-          </div>
+    <div className="flex-1 flex items-center justify-center px-4 py-8">
+      {/* Fenêtre principale fidèle à la maquette de l'utilisateur */}
+      <div className="w-full max-w-sm bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xl text-left space-y-5 animate-in fade-in duration-150">
+        {/* Titre Connexion */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">
+            Connexion
+          </h1>
+        </div>
+
+        {/* Sélecteur de rôle selon nos 2 acteurs : Étudiant & Administrateur */}
+        <div className="flex items-center bg-slate-100/90 p-1 rounded-2xl">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveRole('etudiant');
+              setErrorMessage(null);
+              setEmailInput('');
+            }}
+            className={`flex-1 min-h-[38px] px-3 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeRole === 'etudiant'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4 text-slate-700" />
+            <span>Étudiant</span>
+          </button>
 
           <button
             type="button"
-            onClick={fermerAuthModal}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-200/50 transition-colors cursor-pointer shrink-0"
-            aria-label="Fermer"
+            onClick={() => {
+              setActiveRole('admin');
+              setErrorMessage(null);
+              setEmailInput(emailGestionnaire);
+            }}
+            className={`flex-1 min-h-[38px] px-3 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeRole === 'admin'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
           >
-            <X className="w-4 h-4" />
+            <Shield className="w-4 h-4 text-blue-600" />
+            <span>Administrateur</span>
           </button>
         </div>
 
-        {/* Corps */}
-        <div className="p-5 overflow-y-auto space-y-4">
-          {formError && (
-            <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <span>{formError}</span>
-            </div>
-          )}
+        {/* Message d'erreur éventuel */}
+        {errorMessage && (
+          <div className="text-xs text-rose-700 bg-rose-50 p-3 rounded-xl border border-rose-200 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
-          {/* 1. Connexion Google */}
-          {activeCategory === 'google' && (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">
-                Sélectionnez un compte Google préenregistré :
-              </p>
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white">
-                {googleAccounts.map((acc) => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    onClick={() => handleLoginWithEmail(acc.email)}
-                    className="w-full min-h-[54px] px-4 py-2.5 flex items-center gap-3 text-left hover:bg-slate-50 transition-colors cursor-pointer group"
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full ${acc.avatarBg} text-white flex items-center justify-center font-bold text-xs shrink-0`}
-                    >
-                      {acc.name.charAt(0)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-semibold text-slate-900 group-hover:text-indigo-600 truncate">
-                          {acc.name}
-                        </span>
-                        {acc.isAdmin && (
-                          <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md">
-                            Admin
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono truncate">
-                        {acc.email}
-                      </div>
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 shrink-0" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+        {/* Bouton Continuer avec Google */}
+        <button
+          type="button"
+          onClick={() => setShowGooglePicker(true)}
+          className="w-full min-h-[46px] px-4 bg-white hover:bg-slate-50 active:scale-[0.99] border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 transition-all cursor-pointer flex items-center justify-center gap-3 shadow-2xs"
+        >
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+            <path
+              fill="#4285F4"
+              d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.25 21.36 7.33 24 12 24z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.97 0 12s.46 3.84 1.26 5.42l4.02-3.15z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.25 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+            />
+          </svg>
+          <span>Continuer avec Google</span>
+        </button>
 
-          {/* 2. Connexion Étudiant */}
-          {activeCategory === 'etudiant' && (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">
-                Connectez-vous avec votre matricule ou adresse e-mail :
-              </p>
+        {/* Séparateur OU PAR EMAIL */}
+        <div className="relative flex items-center justify-center my-2">
+          <div className="border-t border-slate-200 w-full" />
+          <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 tracking-wider uppercase shrink-0">
+            OU PAR EMAIL
+          </span>
+        </div>
 
-              <form onSubmit={handleStudentLogin} className="space-y-2.5">
-                <input
-                  type="text"
-                  required
-                  value={studentInput}
-                  onChange={(e) => setStudentInput(e.target.value)}
-                  placeholder="Ex : ETU-2024-001 ou adresse@univ.fr"
-                  className="w-full min-h-[44px] px-3.5 text-xs bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
-                />
+        {/* Formulaire Email et Mot de passe */}
+        <form onSubmit={handleEmailSubmit} className="space-y-3.5">
+          <div>
+            <input
+              type="text"
+              required
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder={
+                activeRole === 'admin'
+                  ? 'Adresse email administrateur'
+                  : 'Adresse email ou matricule'
+              }
+              className="w-full min-h-[46px] px-3.5 py-2.5 bg-white text-sm text-slate-900 rounded-xl border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            />
+          </div>
 
-                <button
-                  type="submit"
-                  className="w-full min-h-[42px] bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>Se connecter comme étudiant</span>
-                </button>
-              </form>
+          <div>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="Mot de passe"
+              className="w-full min-h-[46px] px-3.5 py-2.5 bg-white text-sm text-slate-900 rounded-xl border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            />
+          </div>
 
-              <div className="pt-2">
-                <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">
-                  Comptes étudiants existants :
+          {/* Bouton Se connecter en bleu primaire comme sur l'image */}
+          <button
+            type="submit"
+            className="w-full min-h-[46px] bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold rounded-xl text-sm transition-all cursor-pointer shadow-sm mt-2 flex items-center justify-center"
+          >
+            Se connecter
+          </button>
+        </form>
+      </div>
+
+      {/* Sélecteur de compte Google natif du desktop */}
+      {showGooglePicker && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-left">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.25 21.36 7.33 24 12 24z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.97 0 12s.46 3.84 1.26 5.42l4.02-3.15z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.25 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </svg>
+                <span className="text-sm font-semibold text-slate-900">
+                  Choisir un compte Google
                 </span>
-                <div className="space-y-1">
-                  {etudiants.map((etu) => (
-                    <button
-                      key={etu.id}
-                      type="button"
-                      onClick={() => handleLoginWithEmail(etu.email)}
-                      className="w-full px-3 py-2 text-left rounded-xl hover:bg-slate-100 flex items-center justify-between text-xs text-slate-700 cursor-pointer"
-                    >
-                      <span className="font-semibold">{etu.prenom} {etu.nom}</span>
-                      <span className="font-mono text-slate-400 text-[11px]">{etu.matricule}</span>
-                    </button>
-                  ))}
-                </div>
               </div>
-            </div>
-          )}
 
-          {/* 3. Connexion Administrateur */}
-          {activeCategory === 'admin' && (
-            <div className="space-y-3">
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-center">
-                <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white mx-auto flex items-center justify-center">
-                  <Shield className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Espace Gestionnaire
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5">
-                    {emailGestionnaire}
-                  </p>
-                </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGooglePicker(false);
+                  setShowCustomGoogle(false);
+                }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Fermer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+              {googleAccounts.map((acc) => (
+                <button
+                  key={acc.email}
+                  type="button"
+                  onClick={() => handleSelectGoogleAccount(acc.email)}
+                  className="w-full min-h-[58px] px-5 py-3 flex items-center gap-3.5 text-left hover:bg-slate-50 transition-colors cursor-pointer group"
+                >
+                  <div
+                    className={`w-9 h-9 rounded-full ${acc.avatarBg} text-white flex items-center justify-center font-bold text-xs shrink-0`}
+                  >
+                    {acc.name.charAt(0)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-600 truncate">
+                        {acc.name}
+                      </span>
+                      {acc.isAdmin && (
+                        <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md">
+                          Admin
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-400 font-mono truncate">
+                      {acc.email}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 shrink-0" />
+                </button>
+              ))}
+
+              {!showCustomGoogle ? (
                 <button
                   type="button"
-                  onClick={handleAdminDirectLogin}
-                  className="w-full min-h-[44px] bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
+                  onClick={() => setShowCustomGoogle(true)}
+                  className="w-full min-h-[52px] px-5 py-3 flex items-center gap-3.5 text-left hover:bg-slate-50 text-blue-600 transition-colors cursor-pointer"
                 >
-                  <Shield className="w-4 h-4" />
-                  <span>Accéder à l’administration</span>
+                  <div className="w-9 h-9 rounded-full border border-dashed border-blue-300 flex items-center justify-center shrink-0">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-semibold">
+                    Utiliser un autre compte
+                  </span>
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* 4. Inscription */}
-          {activeCategory === 'register' && (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">
-                Renseignez vos coordonnées pour créer un compte étudiant :
-              </p>
-
-              <form onSubmit={handleRegisterSubmit} className="space-y-2.5">
-                <div className="grid grid-cols-2 gap-2">
+              ) : (
+                <div className="p-4 bg-slate-50 space-y-2.5">
                   <input
-                    type="text"
+                    type="email"
                     required
-                    value={prenom}
-                    onChange={(e) => setPrenom(e.target.value)}
-                    placeholder="Prénom"
-                    className="w-full px-3 py-2 text-xs bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={customGoogleEmail}
+                    onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                    placeholder="adresse.google@univ.fr"
+                    className="w-full text-xs px-3.5 py-2.5 bg-white rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
                   />
-                  <input
-                    type="text"
-                    required
-                    value={nom}
-                    onChange={(e) => setNom(e.target.value)}
-                    placeholder="Nom"
-                    className="w-full px-3 py-2 text-xs bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectGoogleAccount(customGoogleEmail)}
+                      className="flex-1 min-h-[38px] bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl cursor-pointer"
+                    >
+                      Valider
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomGoogle(false)}
+                      className="min-h-[38px] px-3 bg-white border border-slate-200 text-slate-600 text-xs rounded-xl cursor-pointer"
+                    >
+                      Annuler
+                    </button>
+                  </div>
                 </div>
-
-                <input
-                  type="email"
-                  required
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="Adresse e-mail"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    required
-                    value={matricule}
-                    onChange={(e) => setMatricule(e.target.value)}
-                    placeholder="Matricule"
-                    className="w-full px-3 py-2 text-xs font-mono bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <select
-                    value={filiere}
-                    onChange={(e) => setFiliere(e.target.value)}
-                    className="w-full px-2.5 py-2 text-xs bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="Informatique">Informatique</option>
-                    <option value="Lettres Modernes">Lettres Modernes</option>
-                    <option value="Histoire">Histoire</option>
-                    <option value="Physique">Physique</option>
-                    <option value="Droit & Éco">Droit & Éco</option>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full min-h-[42px] mt-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Créer mon compte</span>
-                </button>
-              </form>
+              )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
