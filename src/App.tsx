@@ -1,49 +1,84 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LibraryProvider, useLibrary } from './context/LibraryContext';
 import { UnifiedAuth } from './components/auth/UnifiedAuth';
 import { StudentApp } from './components/student/StudentApp';
 import { ManagerDashboard } from './components/manager/ManagerDashboard';
 import { ToastNotification } from './components/common/ToastNotification';
-import { ManagerTab, StudentTab } from './types/library';
+import { ManagerTab, StudentTab, Ouvrage } from './types/library';
 import {
   Home,
-  Search,
   BookOpen,
   User,
   LayoutGrid,
   Bell,
   ScanLine,
+  Search,
   LogOut,
+  ArrowLeft,
 } from 'lucide-react';
 
 function LibraryWorkspace() {
-  const { currentUser, logout } = useLibrary();
+  const {
+    currentUser,
+    logout,
+    ouvrirAuthModal,
+    getNotificationsEtudiant,
+  } = useLibrary();
 
-  const [studentTab, setStudentTab] = useState<StudentTab>('accueil');
+  const [studentTab, setStudentTab] = useState<StudentTab>('home');
   const [managerTab, setManagerTab] = useState<ManagerTab>('tableau');
+  const [selectedOuvrage, setSelectedOuvrage] = useState<Ouvrage | null>(null);
 
   useEffect(() => {
-    setStudentTab('accueil');
+    setStudentTab('home');
     setManagerTab('tableau');
+    setSelectedOuvrage(null);
   }, [currentUser?.id, currentUser?.role]);
 
-  if (!currentUser) {
-    return (
-      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
-        <ToastNotification />
-        <UnifiedAuth />
-      </div>
-    );
-  }
+  const unreadNotificationsCount = useMemo(() => {
+    if (!currentUser || currentUser.role !== 'etudiant') return 0;
+    return getNotificationsEtudiant(currentUser.id).filter((n) => !n.lu).length;
+  }, [currentUser, getNotificationsEtudiant]);
+
+  // Retour à la page initiale depuis n'importe où
+  const handleGoHome = () => {
+    setSelectedOuvrage(null);
+    setStudentTab('home');
+    setManagerTab('tableau');
+  };
+
+  // Détection de l'état pour la flèche de retour dans le header du body (jamais dans le menubar)
+  const isManager = currentUser?.role === 'gestionnaire';
+  const canGoBack = isManager
+    ? managerTab !== 'tableau'
+    : selectedOuvrage !== null || studentTab !== 'home';
+
+  const handleGoBack = () => {
+    if (isManager) {
+      setManagerTab('tableau');
+    } else {
+      if (selectedOuvrage) {
+        setSelectedOuvrage(null);
+      } else {
+        setStudentTab('home');
+      }
+    }
+  };
 
   const studentNavItems: {
     key: StudentTab;
     label: string;
     icon: React.FC<{ className?: string }>;
+    badge?: number;
   }[] = [
-    { key: 'accueil', label: 'Accueil', icon: Home },
-    { key: 'recherche', label: 'Recherche', icon: Search },
+    { key: 'home', label: 'Home', icon: Home },
     { key: 'emprunts', label: 'Emprunts', icon: BookOpen },
+    {
+      key: 'notifications',
+      label: 'Notifications',
+      icon: Bell,
+      badge: unreadNotificationsCount,
+    },
     { key: 'profil', label: 'Profil', icon: User },
   ];
 
@@ -61,37 +96,100 @@ function LibraryWorkspace() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
       <ToastNotification />
+      <UnifiedAuth />
 
-      {/* Barre supérieure minimaliste */}
-      <header className="h-12 bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
+      {/* Barre supérieure minimaliste (Menubar avec Se connecter et S'inscrire) */}
+      <header className="h-14 bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 shadow-2xs">
         <div className="max-w-lg mx-auto h-full px-4 flex items-center justify-between">
-          <span className="text-base font-bold tracking-tight text-slate-900">
-            BiblioTech
-          </span>
-
+          {/* Logo cliquable pour revenir à la page initiale depuis n'importe quelle interface */}
           <button
             type="button"
-            onClick={logout}
-            className="min-h-[40px] min-w-[40px] -mr-2 flex items-center justify-center text-slate-400 hover:text-slate-800 transition-colors cursor-pointer"
-            aria-label="Déconnexion"
-            title="Déconnexion"
+            onClick={handleGoHome}
+            className="flex items-center gap-2.5 text-left cursor-pointer group"
           >
-            <LogOut className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 group-hover:bg-indigo-700 text-white flex items-center justify-center font-bold text-sm shadow-xs transition-colors">
+              B
+            </div>
+            <div>
+              <span className="text-base font-bold tracking-tight text-slate-900 block leading-none group-hover:text-indigo-600 transition-colors">
+                BiblioTech
+              </span>
+              {currentUser ? (
+                <span className="text-[10px] text-slate-500 font-medium block mt-1 leading-none">
+                  {currentUser.prenom} {currentUser.nom.charAt(0)}. ({currentUser.role === 'gestionnaire' ? 'Admin' : 'Étudiant'})
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 font-medium block mt-1 leading-none">
+                  Accueil
+                </span>
+              )}
+            </div>
           </button>
+
+          {/* Menubar : Se connecter & S'inscrire */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => ouvrirAuthModal('login')}
+              className="min-h-[36px] px-3 text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            >
+              Se connecter
+            </button>
+
+            <button
+              type="button"
+              onClick={() => ouvrirAuthModal('register')}
+              className="min-h-[36px] px-3 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer shadow-2xs"
+            >
+              S’inscrire
+            </button>
+
+            {currentUser && (
+              <button
+                type="button"
+                onClick={logout}
+                className="min-h-[36px] w-9 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer ml-0.5"
+                aria-label="Déconnexion"
+                title="Déconnexion"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Contenu de la section active */}
-      <main className="flex-1 w-full max-w-lg mx-auto px-4 pt-5 pb-24">
-        {currentUser.role === 'etudiant' ? (
-          <StudentApp
-            activeTab={studentTab}
-            onChangeTab={(t) => setStudentTab(t)}
-          />
-        ) : (
+      {/* Contenu principal de la section active */}
+      <main className="flex-1 w-full max-w-lg mx-auto px-4 pt-3 pb-24">
+        {/* Flèche de retour à gauche dans le header du body (jamais dans le menubar) */}
+        {canGoBack && (
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={handleGoBack}
+              className="min-h-[38px] px-2.5 py-1 -ml-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+              aria-label="Retourner en arrière"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Retour</span>
+            </button>
+          </div>
+        )}
+
+        {isManager ? (
           <ManagerDashboard
             activeTab={managerTab}
             onChangeTab={(t) => setManagerTab(t)}
+          />
+        ) : (
+          <StudentApp
+            activeTab={studentTab}
+            onChangeTab={(t) => {
+              setSelectedOuvrage(null);
+              setStudentTab(t);
+            }}
+            selectedOuvrage={selectedOuvrage}
+            onSelectOuvrage={setSelectedOuvrage}
           />
         )}
       </main>
@@ -102,29 +200,8 @@ function LibraryWorkspace() {
         className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200"
       >
         <div className="max-w-lg mx-auto grid grid-cols-4 h-16">
-          {currentUser.role === 'etudiant'
-            ? studentNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = studentTab === item.key;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setStudentTab(item.key)}
-                    className={`flex flex-col items-center justify-center min-h-[48px] transition-colors cursor-pointer ${
-                      isActive
-                        ? 'text-indigo-600'
-                        : 'text-slate-400 hover:text-slate-700'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-[11px] font-semibold mt-1 leading-none">
-                      {item.label}
-                    </span>
-                  </button>
-                );
-              })
-            : managerNavItems.map((item) => {
+          {isManager
+            ? managerNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = managerTab === item.key;
                 return (
@@ -139,6 +216,37 @@ function LibraryWorkspace() {
                     }`}
                   >
                     <Icon className="w-5 h-5" />
+                    <span className="text-[11px] font-semibold mt-1 leading-none">
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })
+            : studentNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = !selectedOuvrage && studentTab === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedOuvrage(null);
+                      setStudentTab(item.key);
+                    }}
+                    className={`relative flex flex-col items-center justify-center min-h-[48px] transition-colors cursor-pointer ${
+                      isActive
+                        ? 'text-indigo-600'
+                        : 'text-slate-400 hover:text-slate-700'
+                    }`}
+                  >
+                    <div className="relative">
+                      <Icon className="w-5 h-5" />
+                      {Boolean(item.badge && item.badge > 0) && (
+                        <span className="absolute -top-1 -right-2 bg-indigo-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[11px] font-semibold mt-1 leading-none">
                       {item.label}
                     </span>

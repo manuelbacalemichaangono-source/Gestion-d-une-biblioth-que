@@ -6,20 +6,19 @@ import {
   Check,
   AlertCircle,
   FileText,
-  Send,
   RotateCcw,
   X,
+  Scan,
 } from 'lucide-react';
 import { useLibrary } from '../../context/LibraryContext';
 
-type GuichetMode = 'pret' | 'retour' | 'recu';
+type GuichetMode = 'pret' | 'retour';
 
 export const ManagerGuichet: React.FC = () => {
   const {
     exemplaires,
     ouvrages,
     etudiants,
-    emprunts,
     enregistrerEmprunt,
     enregistrerRetour,
     afficherNotification,
@@ -34,7 +33,6 @@ export const ManagerGuichet: React.FC = () => {
   const [studentMatricule, setStudentMatricule] = useState(
     etudiants[0]?.matricule || ''
   );
-  const [selectedLoanId, setSelectedLoanId] = useState('');
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{
     text: string;
@@ -67,10 +65,10 @@ export const ManagerGuichet: React.FC = () => {
       const upper = raw.toUpperCase();
       if (upper.startsWith('ETU-')) {
         setStudentMatricule(upper);
-        setStatusMessage({ text: `Carte détectée : ${upper}` });
+        setStatusMessage({ text: `Carte étudiant scannée : ${upper}` });
       } else {
         setCopyCode(upper);
-        setStatusMessage({ text: `Code détecté : ${upper}` });
+        setStatusMessage({ text: `Exemplaire scanné : ${upper}` });
       }
       stopCamera();
       setCameraOpen(false);
@@ -82,9 +80,9 @@ export const ManagerGuichet: React.FC = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+    if (video && canvas && video.readyState >= 2) {
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
       if (ctx) {
@@ -109,14 +107,23 @@ export const ManagerGuichet: React.FC = () => {
     setCameraError(null);
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError('Caméra non disponible.');
+        setCameraError('Accès à la caméra non supporté par ce navigateur.');
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-        audio: false,
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+      } catch {
+        // Fallback générique si facingMode environment échoue
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
       streamRef.current = stream;
       if (videoRef.current) {
@@ -126,8 +133,8 @@ export const ManagerGuichet: React.FC = () => {
         setCameraActive(true);
         animFrameRef.current = requestAnimationFrame(scanFrame);
       }
-    } catch {
-      setCameraError('Accès caméra refusé.');
+    } catch (err) {
+      setCameraError('Impossible d’accéder à la caméra. Vérifiez les autorisations.');
       setCameraActive(false);
     }
   };
@@ -160,19 +167,16 @@ export const ManagerGuichet: React.FC = () => {
             if (code && code.data) {
               handleDetectedCode(code.data.trim());
             } else {
-              setStatusMessage({ text: `Fichier ${file.name} joint.` });
+              setStatusMessage({ text: `Code lu depuis l’image : ${file.name}` });
             }
           }
         };
         img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
-    } else {
-      setStatusMessage({ text: `Fichier ${file.name} joint.` });
     }
   };
 
-  const activeLoans = emprunts.filter((l) => !l.date_retour_effective);
   const availableCopies = exemplaires.filter((ex) => ex.statut === 'disponible');
   const borrowedCopies = exemplaires.filter(
     (ex) => ex.statut === 'non disponible'
@@ -182,7 +186,7 @@ export const ManagerGuichet: React.FC = () => {
     if (mode === 'pret') {
       if (!copyCode.trim()) {
         setStatusMessage({
-          text: 'Saisissez ou scannez le code de l’exemplaire.',
+          text: 'Veuillez saisir ou scanner le code de l’exemplaire.',
           isError: true,
         });
         return;
@@ -195,10 +199,10 @@ export const ManagerGuichet: React.FC = () => {
       } else {
         setStatusMessage({ text: res.message, isError: true });
       }
-    } else if (mode === 'retour') {
+    } else {
       if (!copyCode.trim()) {
         setStatusMessage({
-          text: 'Saisissez ou scannez l’exemplaire retourné.',
+          text: 'Veuillez saisir ou scanner l’exemplaire retourné.',
           isError: true,
         });
         return;
@@ -211,20 +215,6 @@ export const ManagerGuichet: React.FC = () => {
       } else {
         setStatusMessage({ text: res.message, isError: true });
       }
-    } else {
-      if (!selectedLoanId) {
-        setStatusMessage({
-          text: 'Sélectionnez un emprunt.',
-          isError: true,
-        });
-        return;
-      }
-      const target = emprunts.find((l) => l.id === selectedLoanId);
-      afficherNotification(
-        `Reçu envoyé à ${target?.etudiant_nom || 'l’étudiant'}.`
-      );
-      setAttachedFileName(null);
-      setStatusMessage(null);
     }
   };
 
@@ -236,34 +226,40 @@ export const ManagerGuichet: React.FC = () => {
         </h1>
 
         <div className="inline-flex bg-slate-200/70 p-1 rounded-xl">
-          {(
-            [
-              { key: 'pret', label: 'Prêt' },
-              { key: 'retour', label: 'Retour' },
-              { key: 'recu', label: 'Reçu' },
-            ] as { key: GuichetMode; label: string }[]
-          ).map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => {
-                setMode(item.key);
-                setStatusMessage(null);
-                setCopyCode('');
-              }}
-              className={`min-h-[36px] px-3.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                mode === item.key
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setMode('pret');
+              setStatusMessage(null);
+              setCopyCode('');
+            }}
+            className={`min-h-[36px] px-4 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+              mode === 'pret'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Prêt
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('retour');
+              setStatusMessage(null);
+              setCopyCode('');
+            }}
+            className={`min-h-[36px] px-4 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+              mode === 'retour'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Retour
+          </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+      <div className="bg-white rounded-3xl border border-slate-200 p-5 space-y-4 shadow-2xs">
         {/* Boutons Caméra & Fichiers */}
         <div className="grid grid-cols-2 gap-2.5">
           <button
@@ -276,33 +272,37 @@ export const ManagerGuichet: React.FC = () => {
                 startCamera();
               }
             }}
-            className="min-h-[44px] px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            className={`min-h-[44px] px-3 text-xs font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              cameraOpen
+                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100'
+            }`}
           >
-            <Camera className="w-4 h-4 text-slate-600" />
-            <span>{cameraOpen ? 'Fermer caméra' : 'Scanner QR'}</span>
+            <Camera className="w-4 h-4" />
+            <span>{cameraOpen ? 'Arrêter la caméra' : 'Scanner caméra'}</span>
           </button>
 
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="min-h-[44px] px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            className="min-h-[44px] px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-2xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <Upload className="w-4 h-4" />
-            <span>Importer fichier</span>
+            <span>Importer code/image</span>
           </button>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,application/pdf"
+            accept="image/*"
             onChange={handleFileUpload}
             className="hidden"
           />
         </div>
 
-        {/* Viseur caméra (affiché uniquement à la demande) */}
+        {/* Viseur caméra actif */}
         {cameraOpen && (
-          <div className="relative aspect-video bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center">
+          <div className="relative aspect-video bg-slate-950 rounded-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 shadow-inner">
             <video
               ref={videoRef}
               className={`w-full h-full object-cover ${
@@ -310,26 +310,39 @@ export const ManagerGuichet: React.FC = () => {
               }`}
               playsInline
               muted
+              autoPlay
             />
             <canvas ref={canvasRef} className="hidden" />
+
+            {cameraActive && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-48 h-48 border-2 border-indigo-400 rounded-2xl relative animate-pulse">
+                  <div className="absolute inset-x-0 top-1/2 h-0.5 bg-rose-500 shadow-sm" />
+                </div>
+              </div>
+            )}
+
             {!cameraActive && (
-              <p className="text-xs text-slate-300 px-4 text-center">
-                {cameraError || 'Ouverture de la caméra...'}
-              </p>
+              <div className="text-center p-4 space-y-2">
+                <Scan className="w-8 h-8 text-indigo-400 mx-auto animate-spin" />
+                <p className="text-xs text-slate-300">
+                  {cameraError || 'Connexion au capteur caméra en cours...'}
+                </p>
+              </div>
             )}
           </div>
         )}
 
         {statusMessage && (
           <div
-            className={`text-xs p-3 rounded-xl flex items-center gap-2 ${
+            className={`text-xs p-3 rounded-2xl flex items-center gap-2 ${
               statusMessage.isError
-                ? 'bg-rose-50 text-rose-700'
-                : 'bg-slate-50 text-slate-800'
+                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
             }`}
           >
             {statusMessage.isError ? (
-              <AlertCircle className="w-4 h-4 shrink-0" />
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
             ) : (
               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
             )}
@@ -356,25 +369,35 @@ export const ManagerGuichet: React.FC = () => {
 
         {mode === 'pret' && (
           <div className="space-y-3">
-            <select
-              value={studentMatricule}
-              onChange={(e) => setStudentMatricule(e.target.value)}
-              className="w-full min-h-[46px] px-3.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {etudiants.map((etu) => (
-                <option key={etu.id} value={etu.matricule}>
-                  {etu.prenom} {etu.nom} ({etu.matricule})
-                </option>
-              ))}
-            </select>
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                Étudiant emprunteur
+              </label>
+              <select
+                value={studentMatricule}
+                onChange={(e) => setStudentMatricule(e.target.value)}
+                className="w-full min-h-[46px] px-3.5 text-sm bg-slate-50 rounded-2xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {etudiants.map((etu) => (
+                  <option key={etu.id} value={etu.matricule}>
+                    {etu.prenom} {etu.nom} ({etu.matricule})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <input
-              type="text"
-              value={copyCode}
-              onChange={(e) => setCopyCode(e.target.value)}
-              placeholder="Code exemplaire (ex : EX-TOM-01)"
-              className="w-full min-h-[46px] px-3.5 text-sm font-mono uppercase bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                Code exemplaire
+              </label>
+              <input
+                type="text"
+                value={copyCode}
+                onChange={(e) => setCopyCode(e.target.value)}
+                placeholder="Exemple : EX-CAMUS-02"
+                className="w-full min-h-[46px] px-3.5 text-sm font-mono uppercase bg-slate-50 rounded-2xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
 
             {availableCopies.length > 0 && (
               <select
@@ -390,9 +413,9 @@ export const ManagerGuichet: React.FC = () => {
                 onChange={(e) => {
                   if (e.target.value) setCopyCode(e.target.value);
                 }}
-                className="w-full min-h-[44px] px-3.5 text-xs bg-white rounded-xl border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full min-h-[44px] px-3.5 text-xs bg-white rounded-2xl border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="">Ou sélectionner un exemplaire disponible...</option>
+                <option value="">Sélectionner un exemplaire disponible...</option>
                 {availableCopies.map((c) => {
                   const b = ouvrages.find((o) => o.id === c.ouvrage_id);
                   return (
@@ -408,13 +431,18 @@ export const ManagerGuichet: React.FC = () => {
 
         {mode === 'retour' && (
           <div className="space-y-3">
-            <input
-              type="text"
-              value={copyCode}
-              onChange={(e) => setCopyCode(e.target.value)}
-              placeholder="Code exemplaire retourné"
-              className="w-full min-h-[46px] px-3.5 text-sm font-mono uppercase bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                Code exemplaire retourné
+              </label>
+              <input
+                type="text"
+                value={copyCode}
+                onChange={(e) => setCopyCode(e.target.value)}
+                placeholder="Exemple : EX-CAMUS-01"
+                className="w-full min-h-[46px] px-3.5 text-sm font-mono uppercase bg-slate-50 rounded-2xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
 
             {borrowedCopies.length > 0 && (
               <select
@@ -430,9 +458,9 @@ export const ManagerGuichet: React.FC = () => {
                 onChange={(e) => {
                   if (e.target.value) setCopyCode(e.target.value);
                 }}
-                className="w-full min-h-[44px] px-3.5 text-xs bg-white rounded-xl border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full min-h-[44px] px-3.5 text-xs bg-white rounded-2xl border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="">Ou sélectionner un prêt actif...</option>
+                <option value="">Sélectionner un prêt actif à restituer...</option>
                 {borrowedCopies.map((c) => {
                   const b = ouvrages.find((o) => o.id === c.ouvrage_id);
                   return (
@@ -446,44 +474,20 @@ export const ManagerGuichet: React.FC = () => {
           </div>
         )}
 
-        {mode === 'recu' && (
-          <div>
-            <select
-              value={selectedLoanId}
-              onChange={(e) => setSelectedLoanId(e.target.value)}
-              className="w-full min-h-[46px] px-3.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">Choisir l’emprunt...</option>
-              {activeLoans.map((loan) => (
-                <option key={loan.id} value={loan.id}>
-                  {loan.etudiant_nom} — {loan.ouvrage_titre}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         <button
           type="button"
           onClick={handleConfirm}
-          className="w-full min-h-[48px] bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          className="w-full min-h-[48px] bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-2xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
         >
-          {mode === 'pret' && (
+          {mode === 'pret' ? (
             <>
               <Check className="w-4 h-4" />
               <span>Valider le prêt</span>
             </>
-          )}
-          {mode === 'retour' && (
+          ) : (
             <>
               <RotateCcw className="w-4 h-4" />
               <span>Valider le retour</span>
-            </>
-          )}
-          {mode === 'recu' && (
-            <>
-              <Send className="w-4 h-4" />
-              <span>Envoyer le reçu</span>
             </>
           )}
         </button>

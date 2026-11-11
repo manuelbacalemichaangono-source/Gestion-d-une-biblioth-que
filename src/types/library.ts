@@ -32,6 +32,10 @@ export interface Ouvrage {
   titre: string;
   auteur: string;
   thematique: string;
+  description?: string;
+  annee?: number;
+  isbn?: string;
+  couvertureCouleur?: string;
 }
 
 export type StatutExemplaire = 'disponible' | 'non disponible';
@@ -76,5 +80,22 @@ export interface InfoRetard {
   niveau?: NiveauRetard;
 }
 
-export type StudentTab = 'accueil' | 'recherche' | 'emprunts' | 'profil';
+export type NotificationType = 'emprunt' | 'rappel' | 'retard' | 'info';
+
+export interface NotificationEtudiant {
+  id: string;
+  etudiant_id: string;
+  titre: string;
+  message: string;
+  date: string;
+  type: NotificationType;
+  lu: boolean;
+  ouvrage_id?: string;
+  ouvrage_titre?: string;
+}
+
+export type ModeEnsembliste = 'intersection' | 'union' | 'difference';
+
+export type StudentTab = 'home' | 'emprunts' | 'notifications' | 'profil';
 export type ManagerTab = 'tableau' | 'retards' | 'guichet' | 'catalogue';
+

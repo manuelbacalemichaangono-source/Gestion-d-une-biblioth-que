@@ -1,7 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { Ouvrage } from '../../types/library';
 import { useLibrary } from '../../context/LibraryContext';
-import { Search, SlidersHorizontal, X, ChevronRight } from 'lucide-react';
+import {
+  Search,
+  SlidersHorizontal,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Clock,
+  BookOpen,
+} from 'lucide-react';
 
 interface StudentHomeProps {
   onSelectOuvrage: (ouvrage: Ouvrage) => void;
@@ -10,16 +19,25 @@ interface StudentHomeProps {
 export const StudentHome: React.FC<StudentHomeProps> = ({
   onSelectOuvrage,
 }) => {
-  const { ouvrages, rechercheAutomatique, rechercheAvancee } = useLibrary();
+  const {
+    ouvrages,
+    exemplaires,
+    rechercheAutomatique,
+    rechercheAvancee,
+  } = useLibrary();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
-  // Champs de recherche avancée
+  // Recherche avancée
   const [advTitre, setAdvTitre] = useState('');
   const [advAuteur, setAdvAuteur] = useState('');
   const [advTheme, setAdvTheme] = useState('');
   const [advDisponible, setAdvDisponible] = useState(false);
+
+  // Pagination à 3 livres par page
+  const [currentPage, setCurrentPage] = useState(0);
+  const BOOKS_PER_PAGE = 3;
 
   const themes = useMemo(() => {
     return Array.from(new Set(ouvrages.map((o) => o.thematique))).sort();
@@ -31,9 +49,9 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
     Boolean(advTheme) ||
     advDisponible;
 
-  const hasQuery = Boolean(searchTerm.trim()) || hasAdvancedCriteria;
+  const isSearchActive = Boolean(searchTerm.trim()) || hasAdvancedCriteria;
 
-  const resultats = useMemo(() => {
+  const listeOuvrages = useMemo(() => {
     if (isAdvancedOpen && hasAdvancedCriteria) {
       return rechercheAvancee({
         titre: advTitre,
@@ -42,10 +60,12 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
         disponibleUniquement: advDisponible,
       });
     }
+
     if (searchTerm.trim()) {
       return rechercheAutomatique(searchTerm);
     }
-    return [];
+
+    return ouvrages;
   }, [
     isAdvancedOpen,
     hasAdvancedCriteria,
@@ -54,20 +74,44 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
     advTheme,
     advDisponible,
     searchTerm,
-    rechercheAutomatique,
     rechercheAvancee,
+    rechercheAutomatique,
+    ouvrages,
   ]);
 
-  const handleResetAdvanced = () => {
-    setAdvTitre('');
-    setAdvAuteur('');
-    setAdvTheme('');
-    setAdvDisponible(false);
+  const totalPages = Math.max(1, Math.ceil(listeOuvrages.length / BOOKS_PER_PAGE));
+
+  // Réinitialiser la page si les résultats changent
+  React.useEffect(() => {
+    setCurrentPage(0);
+  }, [searchTerm, advTitre, advAuteur, advTheme, advDisponible, isAdvancedOpen]);
+
+  const livresAffiches = useMemo(() => {
+    const start = currentPage * BOOKS_PER_PAGE;
+    return listeOuvrages.slice(start, start + BOOKS_PER_PAGE);
+  }, [listeOuvrages, currentPage]);
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages - 1) {
+      setCurrentPage((p) => p + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage((p) => p - 1);
+    }
+  };
+
+  const isOuvrageDispo = (ouvrageId: string) => {
+    return exemplaires.some(
+      (ex) => ex.ouvrage_id === ouvrageId && ex.statut === 'disponible'
+    );
   };
 
   return (
-    <div className="space-y-4 pt-4">
-      {/* Barre de recherche type Google + Bouton Recherche avancée juste à côté */}
+    <div className="space-y-4 animate-in fade-in duration-150">
+      {/* Barre de recherche simple + Bouton recherche avancée à côté */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -80,9 +124,8 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
                 setIsAdvancedOpen(false);
               }
             }}
-            placeholder="Rechercher un ouvrage..."
-            className="w-full min-h-[48px] pl-11 pr-10 py-3 text-sm bg-white rounded-2xl border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-            autoFocus
+            placeholder="Rechercher un livre..."
+            className="w-full min-h-[46px] pl-11 pr-10 py-2.5 text-sm bg-white rounded-2xl border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs transition-colors"
           />
           {searchTerm && (
             <button
@@ -99,42 +142,42 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
         <button
           type="button"
           onClick={() => setIsAdvancedOpen((v) => !v)}
-          className={`min-h-[48px] px-3.5 rounded-2xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+          className={`min-h-[46px] px-3.5 rounded-2xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             isAdvancedOpen || hasAdvancedCriteria
               ? 'bg-slate-900 border-slate-900 text-white'
               : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
           }`}
         >
           <SlidersHorizontal className="w-4 h-4" />
-          <span>Avancée</span>
+          <span>Recherche avancée</span>
         </button>
       </div>
 
-      {/* Panneau de recherche avancée (uniquement si ouvert) */}
+      {/* Panneau de recherche avancée */}
       {isAdvancedOpen && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+        <div className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 shadow-sm animate-in fade-in duration-150">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <input
               type="text"
               value={advTitre}
               onChange={(e) => setAdvTitre(e.target.value)}
               placeholder="Titre"
-              className="w-full min-h-[44px] px-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full min-h-[40px] px-3.5 py-2 text-xs bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <input
               type="text"
               value={advAuteur}
               onChange={(e) => setAdvAuteur(e.target.value)}
               placeholder="Auteur"
-              className="w-full min-h-[44px] px-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full min-h-[40px] px-3.5 py-2 text-xs bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <select
               value={advTheme}
               onChange={(e) => setAdvTheme(e.target.value)}
-              className="flex-1 min-h-[44px] px-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full min-h-[40px] px-3 py-2 text-xs bg-slate-50 focus:bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="">Toutes les thématiques</option>
               {themes.map((t) => (
@@ -144,7 +187,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
               ))}
             </select>
 
-            <label className="min-h-[44px] px-2 flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer shrink-0">
+            <label className="min-h-[40px] px-3 flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
               <input
                 type="checkbox"
                 checked={advDisponible}
@@ -154,54 +197,88 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
               <span>Disponibles uniquement</span>
             </label>
           </div>
-
-          {hasAdvancedCriteria && (
-            <div className="flex justify-end pt-1">
-              <button
-                type="button"
-                onClick={handleResetAdvanced}
-                className="text-xs font-medium text-slate-500 hover:text-slate-900 py-1 px-2 cursor-pointer"
-              >
-                Effacer les filtres
-              </button>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Suggestions automatiques / Résultats : RIEN ne s'affiche tant qu'aucune recherche n'est saisie */}
-      {hasQuery && (
-        <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
-          {resultats.length === 0 ? (
-            <div className="py-8 px-4 text-center text-xs text-slate-400">
-              Aucun ouvrage correspondant.
-            </div>
-          ) : (
-            resultats.map((ouvrage) => (
-              <button
-                key={ouvrage.id}
-                type="button"
-                onClick={() => onSelectOuvrage(ouvrage)}
-                className="w-full min-h-[58px] px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-50 transition-colors cursor-pointer group"
-              >
-                <div className="min-w-0 flex items-center gap-3">
-                  <Search className="w-4 h-4 text-slate-300 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 truncate">
-                      {ouvrage.titre}
-                    </div>
-                    <div className="text-xs text-slate-500 truncate">
-                      {ouvrage.auteur}
-                    </div>
+      {/* Liste des 3 livres par page avec glissement gauche / droite */}
+      <div className="space-y-3">
+        {livresAffiches.length === 0 ? (
+          <div className="py-12 px-4 text-center bg-white rounded-3xl border border-slate-200 text-xs text-slate-400">
+            Aucun livre correspondant.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {livresAffiches.map((ouvrage) => {
+              const dispo = isOuvrageDispo(ouvrage.id);
+
+              return (
+                <div
+                  key={ouvrage.id}
+                  onClick={() => onSelectOuvrage(ouvrage)}
+                  className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-4 hover:border-indigo-300 hover:shadow-xs transition-all cursor-pointer group"
+                >
+                  {/* Seulement le titre */}
+                  <h3 className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                    {ouvrage.titre}
+                  </h3>
+
+                  {/* Seulement la disponibilité */}
+                  <div className="shrink-0">
+                    {dispo ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Disponible</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 bg-rose-50 px-3 py-1 rounded-full">
+                        <Clock className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Indisponible</span>
+                      </span>
+                    )}
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        )}
 
-                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 shrink-0" />
-              </button>
-            ))
-          )}
-        </div>
-      )}
+        {/* Contrôles de glissement / pagination gauche-droite */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 px-1">
+            <button
+              type="button"
+              onClick={handlePrevPage}
+              disabled={currentPage === 0}
+              className={`min-h-[38px] px-3.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer ${
+                currentPage === 0
+                  ? 'text-slate-300 cursor-not-allowed'
+                  : 'text-slate-700 hover:bg-white bg-slate-100 hover:shadow-2xs'
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Précédent</span>
+            </button>
+
+            <span className="text-xs font-mono font-semibold text-slate-500">
+              {currentPage + 1} / {totalPages}
+            </span>
+
+            <button
+              type="button"
+              onClick={handleNextPage}
+              disabled={currentPage >= totalPages - 1}
+              className={`min-h-[38px] px-3.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer ${
+                currentPage >= totalPages - 1
+                  ? 'text-slate-300 cursor-not-allowed'
+                  : 'text-slate-700 hover:bg-white bg-slate-100 hover:shadow-2xs'
+              }`}
+            >
+              <span>Suivant</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

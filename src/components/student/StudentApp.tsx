@@ -1,46 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Ouvrage, StudentTab } from '../../types/library';
-import { StudentDashboard } from './StudentDashboard';
 import { StudentHome } from './StudentHome';
 import { StudentLoans } from './StudentLoans';
+import { StudentNotifications } from './StudentNotifications';
 import { StudentProfile } from './StudentProfile';
 import { BookDetail } from './BookDetail';
 
 interface StudentAppProps {
   activeTab: StudentTab;
   onChangeTab: (tab: StudentTab) => void;
+  selectedOuvrage: Ouvrage | null;
+  onSelectOuvrage: (ouvrage: Ouvrage | null) => void;
 }
 
 export const StudentApp: React.FC<StudentAppProps> = ({
   activeTab,
-  onChangeTab,
+  selectedOuvrage,
+  onSelectOuvrage,
 }) => {
-  const [selectedOuvrage, setSelectedOuvrage] = useState<Ouvrage | null>(null);
-
-  useEffect(() => {
-    setSelectedOuvrage(null);
-  }, [activeTab]);
-
   if (selectedOuvrage) {
     return (
       <BookDetail
         ouvrage={selectedOuvrage}
-        onBack={() => setSelectedOuvrage(null)}
+        onBack={() => onSelectOuvrage(null)}
       />
     );
   }
 
   return (
     <div className="w-full">
-      {activeTab === 'accueil' && (
-        <StudentDashboard onNavigateTab={onChangeTab} />
-      )}
-
-      {activeTab === 'recherche' && (
-        <StudentHome onSelectOuvrage={(ouv) => setSelectedOuvrage(ouv)} />
+      {activeTab === 'home' && (
+        <StudentHome onSelectOuvrage={(ouv) => onSelectOuvrage(ouv)} />
       )}
 
       {activeTab === 'emprunts' && <StudentLoans />}
+
+      {activeTab === 'notifications' && <StudentNotifications />}
 
       {activeTab === 'profil' && <StudentProfile />}
     </div>

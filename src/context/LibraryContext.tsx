@@ -16,6 +16,9 @@ import {
   UtilisateurConnecte,
   InfoRetard,
   SEUILS_RETARD,
+  NotificationEtudiant,
+  NotificationType,
+  ModeEnsembliste,
 } from '../types/library';
 import {
   EMAIL_GESTIONNAIRE,
@@ -24,6 +27,7 @@ import {
   INITIAL_OUVRAGES,
   INITIAL_EXEMPLAIRES,
   INITIAL_EMPRUNTS,
+  INITIAL_NOTIFICATIONS,
   getDateOffset,
 } from '../data/seedData';
 
@@ -51,6 +55,14 @@ export interface CriteresAvances {
   disponibleUniquement: boolean;
 }
 
+export interface LivreStatistique {
+  ouvrage: Ouvrage;
+  totalEmprunts: number;
+  disponiblesCount: number;
+  totalExemplaires: number;
+  estDisponible: boolean;
+}
+
 export type AuthVerificationResult =
   | { status: 'gestionnaire'; user: UtilisateurConnecte }
   | { status: 'etudiant'; user: UtilisateurConnecte; etudiant: EtudiantInscrit }
@@ -72,12 +84,45 @@ interface LibraryContextType {
   };
   logout: () => void;
 
+  authModal: { isOpen: boolean; mode: 'login' | 'register' };
+  ouvrirAuthModal: (mode: 'login' | 'register') => void;
+  fermerAuthModal: () => void;
+
   rechercheAutomatique: (terme: string) => Ouvrage[];
   rechercheAvancee: (criteres: CriteresAvances) => Ouvrage[];
+  rechercheEnsembliste: (
+    criteres: CriteresAvances,
+    mode?: ModeEnsembliste,
+    options?: { exclureEmpruntes?: boolean; etudiantId?: string }
+  ) => Ouvrage[];
+  ensembleIntersection: (a: Ouvrage[], b: Ouvrage[]) => Ouvrage[];
+  ensembleUnion: (a: Ouvrage[], b: Ouvrage[]) => Ouvrage[];
+  ensembleDifference: (a: Ouvrage[], b: Ouvrage[]) => Ouvrage[];
+
+  getLivresPlusEmpruntes: () => LivreStatistique[];
   getExemplairesOuvrage: (ouvrageId: string) => Exemplaire[];
   getOuvrageById: (ouvrageId: string) => Ouvrage | undefined;
   getActiveLoanForExemplaire: (exemplaireId: string) => Emprunt | undefined;
   getEmpruntsEtudiant: (etudiantId: string, email?: string) => Emprunt[];
+
+  emprunterOuvrageEtudiant: (ouvrageId: string) => {
+    success: boolean;
+    message: string;
+    exemplaire?: Exemplaire;
+  };
+
+  notificationsEtudiant: NotificationEtudiant[];
+  getNotificationsEtudiant: (etudiantId: string) => NotificationEtudiant[];
+  marquerNotificationLue: (notifId: string) => void;
+  marquerToutesNotificationsLues: (etudiantId: string) => void;
+  ajouterNotificationEtudiant: (notif: {
+    etudiant_id: string;
+    titre: string;
+    message: string;
+    type: NotificationType;
+    ouvrage_id?: string;
+    ouvrage_titre?: string;
+  }) => void;
 
   calculerRetard: (emprunt: Emprunt) => InfoRetard;
   envoyerRappels: (empruntIds: string[]) => {
@@ -139,6 +184,21 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
     }
   );
 
+  const [notificationsEtudiant, setNotificationsEtudiant] = useState<
+    NotificationEtudiant[]
+  >(() => {
+    const saved = localStorage.getItem(`${STORAGE_PREFIX}notifications`);
+    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+  });
+
+  const [authModal, setAuthModal] = useState<{
+    isOpen: boolean;
+    mode: 'login' | 'register';
+  }>({
+    isOpen: false,
+    mode: 'login',
+  });
+
   const [notification, setNotification] = useState<NotificationState | null>(
     null
   );
@@ -160,6 +220,13 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
   useEffect(() => {
     localStorage.setItem(`${STORAGE_PREFIX}emprunts`, JSON.stringify(emprunts));
   }, [emprunts]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      `${STORAGE_PREFIX}notifications`,
+      JSON.stringify(notificationsEtudiant)
+    );
+  }, [notificationsEtudiant]);
 
   useEffect(() => {
     if (currentUser) {
@@ -499,6 +566,24 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
         )
       );
 
+      targetLoans.forEach((loan) => {
+        const notifId = `notif-rappel-${Date.now()}-${loan.id}`;
+        setNotificationsEtudiant((prev) => [
+          {
+            id: notifId,
+            etudiant_id: loan.etudiant_id,
+            titre: 'Avis de rappel de la bibliothèque',
+            message: `Rappel de restitution pour « ${loan.ouvrage_titre} » (Exemplaire n°${loan.exemplaire_numero}). Merci de rapporter l’ouvrage au guichet.`,
+            date: todayStr,
+            type: 'rappel',
+            lu: false,
+            ouvrage_id: loan.ouvrage_id,
+            ouvrage_titre: loan.ouvrage_titre,
+          },
+          ...prev,
+        ]);
+      });
+
       const countEtudiants = etudiantsMap.size;
       const countEmprunts = targetLoans.length;
       const etudiantsNoms = Array.from(etudiantsMap.values());
@@ -593,6 +678,22 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
 
       setEmprunts((prev) => [nouvelEmprunt, ...prev]);
 
+      const notifId = `notif-emp-${Date.now()}`;
+      setNotificationsEtudiant((prev) => [
+        {
+          id: notifId,
+          etudiant_id: etudiant.id,
+          titre: 'Prêt accordé au guichet',
+          message: `L’exemplaire n°${exemplaire.numero} de « ${ouvrage?.titre || 'Ouvrage'} » vous a été attribué. Date de retour limite : ${dueDateStr}.`,
+          date: todayStr,
+          type: 'emprunt',
+          lu: false,
+          ouvrage_id: exemplaire.ouvrage_id,
+          ouvrage_titre: ouvrage?.titre,
+        },
+        ...prev,
+      ]);
+
       return {
         success: true,
         message: `Prêt enregistré pour ${etudiant.prenom} ${etudiant.nom}.`,
@@ -637,6 +738,22 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
               : emp
           )
         );
+
+        const notifId = `notif-ret-${Date.now()}`;
+        setNotificationsEtudiant((prev) => [
+          {
+            id: notifId,
+            etudiant_id: empruntActif.etudiant_id,
+            titre: 'Retour d’exemplaire validé',
+            message: `Le retour de votre exemplaire pour « ${empruntActif.ouvrage_titre} » a été validé au guichet. Merci de votre restitution.`,
+            date: todayStr,
+            type: 'info',
+            lu: false,
+            ouvrage_id: empruntActif.ouvrage_id,
+            ouvrage_titre: empruntActif.ouvrage_titre,
+          },
+          ...prev,
+        ]);
       }
 
       const ouvrage = ouvrages.find((o) => o.id === exemplaire.ouvrage_id);
@@ -648,6 +765,294 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       };
     },
     [exemplaires, emprunts, ouvrages]
+  );
+
+  const ouvrirAuthModal = useCallback((mode: 'login' | 'register') => {
+    setAuthModal({ isOpen: true, mode });
+  }, []);
+
+  const fermerAuthModal = useCallback(() => {
+    setAuthModal((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  const getLivresPlusEmpruntes = useCallback((): LivreStatistique[] => {
+    const baseCounts: Record<string, number> = {
+      'ouv-001': 24,
+      'ouv-005': 21,
+      'ouv-003': 19,
+      'ouv-009': 17,
+      'ouv-004': 15,
+      'ouv-002': 14,
+      'ouv-008': 11,
+      'ouv-006': 9,
+      'ouv-010': 8,
+      'ouv-007': 7,
+    };
+
+    return ouvrages
+      .map((ouv) => {
+        const directLoansCount = emprunts.filter(
+          (e) => e.ouvrage_id === ouv.id
+        ).length;
+        const totalEmprunts = (baseCounts[ouv.id] || 5) + directLoansCount;
+        const copies = exemplaires.filter((ex) => ex.ouvrage_id === ouv.id);
+        const disponibles = copies.filter(
+          (ex) => ex.statut === 'disponible'
+        ).length;
+
+        return {
+          ouvrage: ouv,
+          totalEmprunts,
+          disponiblesCount: disponibles,
+          totalExemplaires: copies.length,
+          estDisponible: disponibles > 0,
+        };
+      })
+      .sort((a, b) => b.totalEmprunts - a.totalEmprunts);
+  }, [ouvrages, emprunts, exemplaires]);
+
+  const getNotificationsEtudiant = useCallback(
+    (etudiantId: string): NotificationEtudiant[] => {
+      return notificationsEtudiant
+        .filter((n) => n.etudiant_id === etudiantId)
+        .sort((a, b) => b.date.localeCompare(a.date));
+    },
+    [notificationsEtudiant]
+  );
+
+  const marquerNotificationLue = useCallback((notifId: string) => {
+    setNotificationsEtudiant((prev) =>
+      prev.map((n) => (n.id === notifId ? { ...n, lu: true } : n))
+    );
+  }, []);
+
+  const marquerToutesNotificationsLues = useCallback((etudiantId: string) => {
+    setNotificationsEtudiant((prev) =>
+      prev.map((n) => (n.etudiant_id === etudiantId ? { ...n, lu: true } : n))
+    );
+  }, []);
+
+  const ajouterNotificationEtudiant = useCallback(
+    (notif: {
+      etudiant_id: string;
+      titre: string;
+      message: string;
+      type: NotificationType;
+      ouvrage_id?: string;
+      ouvrage_titre?: string;
+    }) => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const nouvelleNotif: NotificationEtudiant = {
+        id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        date: todayStr,
+        lu: false,
+        ...notif,
+      };
+      setNotificationsEtudiant((prev) => [nouvelleNotif, ...prev]);
+    },
+    []
+  );
+
+  const ensembleIntersection = useCallback(
+    (a: Ouvrage[], b: Ouvrage[]): Ouvrage[] => {
+      const idsB = new Set(b.map((o) => o.id));
+      return a.filter((o) => idsB.has(o.id));
+    },
+    []
+  );
+
+  const ensembleUnion = useCallback(
+    (a: Ouvrage[], b: Ouvrage[]): Ouvrage[] => {
+      const map = new Map<string, Ouvrage>();
+      a.forEach((o) => map.set(o.id, o));
+      b.forEach((o) => map.set(o.id, o));
+      return Array.from(map.values());
+    },
+    []
+  );
+
+  const ensembleDifference = useCallback(
+    (a: Ouvrage[], b: Ouvrage[]): Ouvrage[] => {
+      const idsB = new Set(b.map((o) => o.id));
+      return a.filter((o) => !idsB.has(o.id));
+    },
+    []
+  );
+
+  const rechercheEnsembliste = useCallback(
+    (
+      criteres: CriteresAvances,
+      mode: ModeEnsembliste = 'intersection',
+      options?: { exclureEmpruntes?: boolean; etudiantId?: string }
+    ): Ouvrage[] => {
+      const qTitre = criteres.titre.trim().toLowerCase();
+      const qAuteur = criteres.auteur.trim().toLowerCase();
+      const qTheme = criteres.thematique.trim();
+
+      const hasCritere =
+        Boolean(qTitre) ||
+        Boolean(qAuteur) ||
+        Boolean(qTheme) ||
+        criteres.disponibleUniquement;
+
+      if (!hasCritere && !options?.exclureEmpruntes) return [];
+
+      const ensembleTitre = qTitre
+        ? ouvrages.filter((o) => o.titre.toLowerCase().includes(qTitre))
+        : null;
+      const ensembleAuteur = qAuteur
+        ? ouvrages.filter((o) => o.auteur.toLowerCase().includes(qAuteur))
+        : null;
+      const ensembleTheme = qTheme
+        ? ouvrages.filter((o) => o.thematique === qTheme)
+        : null;
+      const ensembleDispo = criteres.disponibleUniquement
+        ? ouvrages.filter((o) =>
+            exemplaires.some(
+              (ex) => ex.ouvrage_id === o.id && ex.statut === 'disponible'
+            )
+          )
+        : null;
+
+      const activeSets = [
+        ensembleTitre,
+        ensembleAuteur,
+        ensembleTheme,
+        ensembleDispo,
+      ].filter((s): s is Ouvrage[] => s !== null);
+
+      let result: Ouvrage[] = [];
+
+      if (activeSets.length === 0) {
+        result = [...ouvrages];
+      } else if (mode === 'intersection') {
+        result = activeSets.reduce((acc, current) =>
+          ensembleIntersection(acc, current)
+        );
+      } else if (mode === 'union') {
+        result = activeSets.reduce((acc, current) =>
+          ensembleUnion(acc, current)
+        );
+      } else if (mode === 'difference') {
+        const base = activeSets[0] || ouvrages;
+        const rest = activeSets.slice(1);
+        result = rest.reduce(
+          (acc, current) => ensembleDifference(acc, current),
+          base
+        );
+      }
+
+      if (options?.exclureEmpruntes && options.etudiantId) {
+        const empruntesIds = new Set(
+          emprunts
+            .filter((e) => e.etudiant_id === options.etudiantId)
+            .map((e) => e.ouvrage_id)
+        );
+        result = result.filter((o) => !empruntesIds.has(o.id));
+      }
+
+      return result;
+    },
+    [
+      ouvrages,
+      exemplaires,
+      emprunts,
+      ensembleIntersection,
+      ensembleUnion,
+      ensembleDifference,
+    ]
+  );
+
+  const emprunterOuvrageEtudiant = useCallback(
+    (
+      ouvrageId: string
+    ): { success: boolean; message: string; exemplaire?: Exemplaire } => {
+      if (!currentUser) {
+        return {
+          success: false,
+          message: 'Veuillez vous connecter pour emprunter cet ouvrage.',
+        };
+      }
+      if (currentUser.role !== 'etudiant') {
+        return {
+          success: false,
+          message:
+            'Seuls les étudiants peuvent emprunter des ouvrages depuis cette vue.',
+        };
+      }
+
+      const ouvrage = ouvrages.find((o) => o.id === ouvrageId);
+      if (!ouvrage) {
+        return { success: false, message: 'Ouvrage introuvable.' };
+      }
+
+      const dispoExemplaire = exemplaires.find(
+        (ex) => ex.ouvrage_id === ouvrageId && ex.statut === 'disponible'
+      );
+
+      if (!dispoExemplaire) {
+        return {
+          success: false,
+          message: `Aucun exemplaire disponible pour « ${ouvrage.titre} ». Tous les exemplaires sont actuellement en prêt.`,
+        };
+      }
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const dueDateStr = getDateOffset(14);
+
+      setExemplaires((prev) =>
+        prev.map((ex) =>
+          ex.id === dispoExemplaire.id ? { ...ex, statut: 'non disponible' } : ex
+        )
+      );
+
+      const nouvelEmprunt: Emprunt = {
+        id: `emp-${Date.now()}`,
+        etudiant_id: currentUser.id,
+        etudiant_nom: `${currentUser.prenom} ${currentUser.nom}`,
+        etudiant_email: currentUser.email,
+        etudiant_matricule: currentUser.matricule,
+        ouvrage_id: ouvrage.id,
+        ouvrage_titre: ouvrage.titre,
+        ouvrage_auteur: ouvrage.auteur,
+        exemplaire_id: dispoExemplaire.id,
+        exemplaire_numero: dispoExemplaire.numero,
+        exemplaire_code: dispoExemplaire.code_barres,
+        date_emprunt: todayStr,
+        date_retour_prevue: dueDateStr,
+        date_retour_effective: null,
+        rappel_envoye: false,
+        date_dernier_rappel: null,
+      };
+
+      setEmprunts((prev) => [nouvelEmprunt, ...prev]);
+
+      const notifId = `notif-${Date.now()}`;
+      const autoNotif: NotificationEtudiant = {
+        id: notifId,
+        etudiant_id: currentUser.id,
+        titre: 'Exemplaire à retirer à la bibliothèque',
+        message: `Votre demande d’emprunt pour « ${ouvrage.titre} » (Exemplaire n°${dispoExemplaire.numero}) a été enregistrée. Veuillez passer retirer votre exemplaire à la bibliothèque (Guichet central) sous 48h muni de votre carte étudiante.`,
+        date: todayStr,
+        type: 'emprunt',
+        lu: false,
+        ouvrage_id: ouvrage.id,
+        ouvrage_titre: ouvrage.titre,
+      };
+
+      setNotificationsEtudiant((prev) => [autoNotif, ...prev]);
+
+      afficherNotification(
+        `Prêt enregistré pour « ${ouvrage.titre} ». Passez retirer votre exemplaire au guichet.`
+      );
+
+      return {
+        success: true,
+        message: `Prêt validé ! Passez récupérer l'exemplaire au guichet de la bibliothèque.`,
+        exemplaire: dispoExemplaire,
+      };
+    },
+    [currentUser, ouvrages, exemplaires, afficherNotification]
   );
 
   const contextValue = useMemo(
@@ -662,12 +1067,26 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       verifierEtConnecterEmail,
       inscrireEtudiant,
       logout,
+      authModal,
+      ouvrirAuthModal,
+      fermerAuthModal,
       rechercheAutomatique,
       rechercheAvancee,
+      rechercheEnsembliste,
+      ensembleIntersection,
+      ensembleUnion,
+      ensembleDifference,
+      getLivresPlusEmpruntes,
       getExemplairesOuvrage,
       getOuvrageById,
       getActiveLoanForExemplaire,
       getEmpruntsEtudiant,
+      emprunterOuvrageEtudiant,
+      notificationsEtudiant,
+      getNotificationsEtudiant,
+      marquerNotificationLue,
+      marquerToutesNotificationsLues,
+      ajouterNotificationEtudiant,
       calculerRetard,
       envoyerRappels,
       enregistrerEmprunt,
@@ -686,12 +1105,26 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       verifierEtConnecterEmail,
       inscrireEtudiant,
       logout,
+      authModal,
+      ouvrirAuthModal,
+      fermerAuthModal,
       rechercheAutomatique,
       rechercheAvancee,
+      rechercheEnsembliste,
+      ensembleIntersection,
+      ensembleUnion,
+      ensembleDifference,
+      getLivresPlusEmpruntes,
       getExemplairesOuvrage,
       getOuvrageById,
       getActiveLoanForExemplaire,
       getEmpruntsEtudiant,
+      emprunterOuvrageEtudiant,
+      notificationsEtudiant,
+      getNotificationsEtudiant,
+      marquerNotificationLue,
+      marquerToutesNotificationsLues,
+      ajouterNotificationEtudiant,
       calculerRetard,
       envoyerRappels,
       enregistrerEmprunt,
@@ -701,6 +1134,7 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       fermerNotification,
     ]
   );
+
 
   return (
     <LibraryContext.Provider value={contextValue}>

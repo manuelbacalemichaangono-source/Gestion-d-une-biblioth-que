@@ -94,7 +94,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
         <button
           type="button"
-          onClick={() => onNavigateTab('recherche')}
+          onClick={() => onNavigateTab('home')}
           className="w-full min-h-[60px] px-5 py-3.5 flex items-center justify-between text-left hover:bg-slate-50 transition-colors cursor-pointer"
         >
           <div className="flex items-center gap-3.5">
