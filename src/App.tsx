@@ -143,32 +143,19 @@ function LibraryWorkspace() {
 
       {/* Contenu principal de la section active */}
       <main className="flex-1 w-full max-w-lg mx-auto px-4 pt-3 pb-24">
-        {/* Header du body : Flèche de retour à gauche & Se déconnecter à droite */}
-        <div className="mb-3 flex items-center justify-between min-h-[40px]">
-          <div>
-            {canGoBack && (
-              <button
-                type="button"
-                onClick={handleGoBack}
-                className="min-h-[38px] px-2.5 py-1 -ml-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                aria-label="Retourner en arrière"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Retour</span>
-              </button>
-            )}
+        {canGoBack && (
+          <div className="mb-3 flex items-center">
+            <button
+              type="button"
+              onClick={handleGoBack}
+              className="min-h-[36px] px-2.5 py-1 -ml-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+              aria-label="Retourner en arrière"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Retour</span>
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={logout}
-            className="min-h-[36px] px-3 py-1 rounded-xl text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 inline-flex items-center gap-1.5 transition-colors cursor-pointer ml-auto"
-            title="Se déconnecter"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Se déconnecter</span>
-          </button>
-        </div>
+        )}
 
         {isManager ? (
           <ManagerDashboard

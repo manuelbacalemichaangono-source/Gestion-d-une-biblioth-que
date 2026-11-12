@@ -31,7 +31,7 @@ import {
   getDateOffset,
 } from '../data/seedData';
 
-const STORAGE_PREFIX = 'bibliotech_v3_';
+const STORAGE_PREFIX = 'bibliotech_v6_';
 
 export interface NotificationState {
   id: string;
@@ -46,6 +46,8 @@ export interface InscriptionData {
   prenom: string;
   matricule: string;
   filiere: string;
+  telephone?: string;
+  etablissement?: string;
 }
 
 export interface CriteresAvances {
@@ -82,6 +84,7 @@ interface LibraryContextType {
     success: boolean;
     error?: string;
   };
+  mettreAJourProfilEtudiant: (data: Partial<EtudiantInscrit>) => void;
   logout: () => void;
 
   authModal: { isOpen: boolean; mode: 'login' | 'register' };
@@ -130,6 +133,17 @@ interface LibraryContextType {
     countEmprunts: number;
     countEtudiants: number;
     etudiantsTouches: string[];
+    etudiantsDetails: { nom: string; telephone: string; email: string; book: string; loanId: string }[];
+  };
+  envoyerRappelDirect: (params: {
+    etudiantId: string;
+    messagePersonnalise?: string;
+  }) => {
+    success: boolean;
+    telephone?: string;
+    message: string;
+    etudiantNom: string;
+    smsUrl?: string;
   };
   enregistrerEmprunt: (
     exemplaireCodeOuId: string,
@@ -324,6 +338,8 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
           matricule: etudiant.matricule,
           code_massar: etudiant.code_massar || etudiant.matricule,
           filiere: etudiant.filiere,
+          telephone: etudiant.telephone,
+          etablissement: etudiant.etablissement,
           role: 'etudiant',
         };
         setCurrentUser(studentUser);
@@ -424,6 +440,20 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
     setCurrentUser(null);
     localStorage.removeItem(`${STORAGE_PREFIX}user`);
   }, []);
+
+  const mettreAJourProfilEtudiant = useCallback(
+    (data: Partial<EtudiantInscrit>) => {
+      if (!currentUser || currentUser.role !== 'etudiant') return;
+      setEtudiants((prev) =>
+        prev.map((e) => (e.id === currentUser.id ? { ...e, ...data } : e))
+      );
+      setCurrentUser((prev) =>
+        prev ? { ...prev, ...data } : null
+      );
+      afficherNotification('Profil mis à jour avec succès.');
+    },
+    [currentUser, afficherNotification]
+  );
 
   // Recherche automatique type Google : vide par défaut, priorité aux titres qui commencent par la saisie
   const rechercheAutomatique = useCallback(
@@ -536,6 +566,7 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       countEmprunts: number;
       countEtudiants: number;
       etudiantsTouches: string[];
+      etudiantsDetails: { nom: string; telephone: string; email: string; book: string; loanId: string }[];
     } => {
       if (empruntIds.length === 0) {
         return {
@@ -543,18 +574,28 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
           countEmprunts: 0,
           countEtudiants: 0,
           etudiantsTouches: [],
+          etudiantsDetails: [],
         };
       }
 
       const backupSnapshot = [...emprunts];
       const targetLoans = emprunts.filter((l) => empruntIds.includes(l.id));
       const etudiantsMap = new Map<string, string>();
+      const etudiantsDetails: { nom: string; telephone: string; email: string; book: string; loanId: string }[] = [];
 
       targetLoans.forEach((loan) => {
         const key = loan.etudiant_email || loan.etudiant_id;
         if (!etudiantsMap.has(key)) {
           etudiantsMap.set(key, loan.etudiant_nom);
         }
+        const stuObj = etudiants.find((e) => e.id === loan.etudiant_id || e.email === loan.etudiant_email);
+        etudiantsDetails.push({
+          nom: loan.etudiant_nom,
+          telephone: loan.etudiant_telephone || stuObj?.telephone || '+212 632 574752',
+          email: loan.etudiant_email,
+          book: loan.ouvrage_titre,
+          loanId: loan.id,
+        });
       });
 
       const todayStr = new Date().toISOString().split('T')[0];
@@ -593,10 +634,12 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       const countEmprunts = targetLoans.length;
       const etudiantsNoms = Array.from(etudiantsMap.values());
 
+      const phoneInfo = etudiantsDetails[0]?.telephone ? ` (Tél: ${etudiantsDetails[0].telephone})` : '';
+
       afficherNotification(
         countEmprunts === 1
-          ? `Rappel envoyé à ${etudiantsNoms[0]}`
-          : `${countEmprunts} rappels envoyés`,
+          ? `Rappel envoyé à ${etudiantsNoms[0]}${phoneInfo} et sur BiblioTech`
+          : `${countEmprunts} rappels envoyés par SMS/Tél et sur BiblioTech`,
         {
           label: 'Annuler',
           onAction: () => {
@@ -611,9 +654,86 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
         countEmprunts,
         countEtudiants,
         etudiantsTouches: etudiantsNoms,
+        etudiantsDetails,
       };
     },
-    [emprunts, afficherNotification]
+    [emprunts, etudiants, afficherNotification]
+  );
+
+  const envoyerRappelDirect = useCallback(
+    ({
+      etudiantId,
+      messagePersonnalise,
+    }: {
+      etudiantId: string;
+      messagePersonnalise?: string;
+    }): {
+      success: boolean;
+      telephone?: string;
+      message: string;
+      etudiantNom: string;
+      smsUrl?: string;
+    } => {
+      const etudiant = etudiants.find((e) => e.id === etudiantId);
+      if (!etudiant) {
+        return { success: false, message: 'Étudiant non trouvé.', etudiantNom: '' };
+      }
+
+      const pretsActifs = emprunts.filter(
+        (e) => !e.date_retour_effective && e.etudiant_id === etudiantId
+      );
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // Marquer comme rappel envoyé
+      setEmprunts((prev) =>
+        prev.map((e) =>
+          !e.date_retour_effective && e.etudiant_id === etudiantId
+            ? { ...e, rappel_envoye: true, date_dernier_rappel: todayStr }
+            : e
+        )
+      );
+
+      const livresTitres =
+        pretsActifs.length > 0
+          ? pretsActifs.map((p) => `« ${p.ouvrage_titre} »`).join(', ')
+          : 'vos emprunts';
+
+      const defaultMsg = `Bonjour ${etudiant.prenom}, rappel de la bibliothèque BiblioTech : merci de vérifier la restitution de vos emprunts (${livresTitres}) au guichet central.`;
+      const finalMsg = messagePersonnalise?.trim() || defaultMsg;
+
+      // In-app notification for the student
+      const notifId = `notif-rappel-${Date.now()}`;
+      setNotificationsEtudiant((prev) => [
+        {
+          id: notifId,
+          etudiant_id: etudiant.id,
+          titre: 'Avis de rappel de la bibliothèque',
+          message: finalMsg,
+          date: todayStr,
+          type: 'rappel',
+          lu: false,
+          ouvrage_titre: pretsActifs[0]?.ouvrage_titre,
+        },
+        ...prev,
+      ]);
+
+      const phoneNum = etudiant.telephone || '+212 601 786299';
+      const cleanPhoneDigits = phoneNum.replace(/\s+/g, '');
+      const smsUrl = `sms:${cleanPhoneDigits}?body=${encodeURIComponent(finalMsg)}`;
+
+      afficherNotification(
+        `Rappel SMS envoyé au ${phoneNum} et notifié dans l'espace BiblioTech de ${etudiant.prenom} ${etudiant.nom}.`
+      );
+
+      return {
+        success: true,
+        telephone: phoneNum,
+        message: finalMsg,
+        etudiantNom: `${etudiant.prenom} ${etudiant.nom}`,
+        smsUrl,
+      };
+    },
+    [etudiants, emprunts, afficherNotification]
   );
 
   const enregistrerEmprunt = useCallback(
@@ -1071,6 +1191,7 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       currentUser,
       verifierEtConnecterEmail,
       inscrireEtudiant,
+      mettreAJourProfilEtudiant,
       logout,
       authModal,
       ouvrirAuthModal,
@@ -1094,6 +1215,7 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       ajouterNotificationEtudiant,
       calculerRetard,
       envoyerRappels,
+      envoyerRappelDirect,
       enregistrerEmprunt,
       enregistrerRetour,
       notification,
@@ -1109,6 +1231,7 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       currentUser,
       verifierEtConnecterEmail,
       inscrireEtudiant,
+      mettreAJourProfilEtudiant,
       logout,
       authModal,
       ouvrirAuthModal,
@@ -1132,6 +1255,7 @@ export const LibraryProvider: React.FC<{ children: ReactNode }> = ({
       ajouterNotificationEtudiant,
       calculerRetard,
       envoyerRappels,
+      envoyerRappelDirect,
       enregistrerEmprunt,
       enregistrerRetour,
       notification,

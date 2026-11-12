@@ -9,6 +9,8 @@ export interface UtilisateurConnecte {
   matricule?: string;
   code_massar?: string;
   filiere?: string;
+  telephone?: string;
+  etablissement?: string;
 }
 
 export interface EtudiantInscrit {
@@ -19,6 +21,8 @@ export interface EtudiantInscrit {
   prenom: string;
   email: string;
   filiere?: string;
+  telephone?: string;
+  etablissement?: string;
 }
 
 export interface Gestionnaire {
@@ -56,6 +60,7 @@ export interface Emprunt {
   etudiant_nom: string;
   etudiant_email: string;
   etudiant_matricule?: string;
+  etudiant_telephone?: string;
   ouvrage_id: string;
   ouvrage_titre: string;
   ouvrage_auteur?: string;

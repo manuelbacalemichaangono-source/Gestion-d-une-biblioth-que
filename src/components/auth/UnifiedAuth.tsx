@@ -33,19 +33,14 @@ export const UnifiedAuth: React.FC = () => {
 
   const googleAccounts: GoogleAccountOption[] = [
     {
-      name: 'Thomas Martin',
-      email: 'thomas.martin@sorbonne.fr',
+      name: 'Manuel Bacale',
+      email: 'bacalemicha@gmail.com',
+      avatarBg: 'bg-blue-600',
+    },
+    {
+      name: 'Fatima Zahra El Amrani',
+      email: 'fatima.elamrani@univ.ma',
       avatarBg: 'bg-indigo-600',
-    },
-    {
-      name: 'Sophie Bernard',
-      email: 'sophie.bernard@polytechnique.edu',
-      avatarBg: 'bg-teal-700',
-    },
-    {
-      name: 'Lucas Moreau',
-      email: 'lucas.moreau@univ-paris.fr',
-      avatarBg: 'bg-slate-700',
     },
     {
       name: 'Claire Dupont',
@@ -87,17 +82,21 @@ export const UnifiedAuth: React.FC = () => {
       return;
     }
 
-    // Connexion étudiant (par email ou par matricule)
+    // Connexion étudiant (par email, code massar, matricule ou téléphone)
     const raw = emailInput.trim().toLowerCase();
+    const cleanDigits = raw.replace(/[^0-9]/g, '');
+
     if (!raw) {
-      setErrorMessage('Veuillez saisir votre adresse e-mail ou matricule.');
+      setErrorMessage('Veuillez saisir votre adresse e-mail, Code Massar ou numéro de téléphone.');
       return;
     }
 
     const match = etudiants.find(
       (etu) =>
         etu.email.toLowerCase() === raw ||
-        etu.matricule.toLowerCase() === raw
+        etu.matricule.toLowerCase() === raw ||
+        (etu.code_massar && etu.code_massar.toLowerCase() === raw) ||
+        (cleanDigits.length >= 8 && etu.telephone && etu.telephone.replace(/[^0-9]/g, '').includes(cleanDigits))
     );
 
     const emailToConnect = match ? match.email : raw;
@@ -105,7 +104,7 @@ export const UnifiedAuth: React.FC = () => {
 
     if (res.status === 'non_inscrit') {
       setErrorMessage(
-        'Identifiant ou e-mail introuvable. Veuillez vérifier vos identifiants étudiants.'
+        'Identifiant, e-mail ou numéro introuvable. Veuillez vérifier vos coordonnées.'
       );
     }
   };
@@ -212,7 +211,7 @@ export const UnifiedAuth: React.FC = () => {
               placeholder={
                 activeRole === 'admin'
                   ? 'Adresse email administrateur'
-                  : 'Adresse email ou matricule'
+                  : 'Email, Code Massar ou Téléphone (+212...)'
               }
               className="w-full min-h-[46px] px-3.5 py-2.5 bg-white text-sm text-slate-900 rounded-xl border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
